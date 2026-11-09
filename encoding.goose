@@ -1,4 +1,4 @@
-// encoding - the base32, base32hex, hex, ASCII85 and base85 codecs for
+// encoding - the base32, base32hex, hex, ASCII85, base85 and Z85 codecs for
 // Goose.
 //
 // The package writes bytes as text and reads text back to bytes.

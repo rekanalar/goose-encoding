@@ -1,4 +1,5 @@
-// The ASCII85 codec and the base85 codec of RFC 1924.
+// The ASCII85 codec, the base85 codec of RFC 1924 and the Z85 codec
+// of ZeroMQ RFC 32.
 //
 // A group holds 5 characters for 4 bytes. A tail holds 2, 3 or 4
 // characters for 1, 2 or 3 bytes.
@@ -23,6 +24,13 @@ const ALPHA_ASCII85: i64 = 0;
 
 // The kind of the alphabet of RFC 1924.
 const ALPHA_BASE85: i64 = 1;
+
+// The kind of the alphabet of Z85.
+const ALPHA_Z85: i64 = 2;
+
+// The 23 characters of Z85 that no range holds. The value of such a
+// character is 62 plus its place in this list.
+const Z85_PUNCT: const u8[:] = ".-:+=^!/*?&<>()[]{}@%$#";
 
 // The count of the characters of a group.
 const B85_GROUP_CHARS: i64 = 5;
@@ -54,6 +62,14 @@ fn b85_pow(n: i64) -> i64 {
     return 4437053125;
 }
 
+// b85_min_tail gives the count of the characters of the shortest tail
+// that the codec takes. The base85 codecs take a tail of 2 characters
+// to 4 characters. The Z85 codec takes no tail at all.
+fn b85_min_tail(kind: i64) -> i64 {
+    if kind == ALPHA_Z85 { return 5; }
+    return 2;
+}
+
 // b85_has_shortcut tells whether the codec holds the shortcut z. Only
 // ASCII85 holds it. The shortcut stands for four zero bytes.
 fn b85_has_shortcut(kind: i64) -> bool {
@@ -66,12 +82,44 @@ fn b85_is_shortcut(kind: i64, c: u8) -> bool {
     return b85_has_shortcut(kind) && c == 'z';
 }
 
+// b85_letters tells whether the codec holds the two ranges of the
+// letters. ASCII85 holds none of them.
+fn b85_letters(kind: i64) -> bool {
+    return kind == ALPHA_BASE85 || kind == ALPHA_Z85;
+}
+
+// b85_first_letter gives the letter of the first range. The base85
+// codec starts with the upper case letters. The Z85 codec starts with
+// the lower case letters.
+fn b85_first_letter(kind: i64) -> u8 {
+    if kind == ALPHA_Z85 { return 'a'; }
+    return 'A';
+}
+
+// b85_second_letter gives the letter of the second range.
+fn b85_second_letter(kind: i64) -> u8 {
+    if kind == ALPHA_Z85 { return 'A'; }
+    return 'a';
+}
+
+// b85_punct_value gives the value of a character of a punctuation list.
+// The value of such a character is 62 plus its place in the list.
+fn b85_punct_value(table: const u8[:], c: u8) -> u32 {
+    var i: i64 = 0;
+    while i < table.len {
+        if table[i] == c { return (62 + i) as u32; }
+        i = i + 1;
+    }
+    return INVALID;
+}
+
 // b85_symbol gives the character of a value of 0 to 84.
 fn b85_symbol(kind: i64, v: u8) -> u8 {
-    if kind == ALPHA_BASE85 {
+    if b85_letters(kind) {
         if v < 10 { return '0' + v; }
-        if v < 36 { return 'A' + (v - 10); }
-        if v < 62 { return 'a' + (v - 36); }
+        if v < 36 { return b85_first_letter(kind) + (v - 10); }
+        if v < 62 { return b85_second_letter(kind) + (v - 36); }
+        if kind == ALPHA_Z85 { return Z85_PUNCT[v - 62]; }
         return B85_PUNCT[v - 62];
     }
     return '!' + v;
@@ -80,16 +128,14 @@ fn b85_symbol(kind: i64, v: u8) -> u8 {
 // b85_value gives the value of a character of the alphabet. It gives
 // INVALID for a byte that is not in the alphabet.
 fn b85_value(kind: i64, c: u8) -> u32 {
-    if kind == ALPHA_BASE85 {
+    if b85_letters(kind) {
         if c - '0' < 10 { return c - '0'; }
-        if c - 'A' < 26 { return 10 + (c - 'A'); }
-        if c - 'a' < 26 { return 36 + (c - 'a'); }
-        var i: i64 = 0;
-        while i < B85_PUNCT.len {
-            if B85_PUNCT[i] == c { return (62 + i) as u32; }
-            i = i + 1;
-        }
-        return INVALID;
+        let first = b85_first_letter(kind);
+        if c - first < 26 { return 10 + (c - first); }
+        let second = b85_second_letter(kind);
+        if c - second < 26 { return 36 + (c - second); }
+        if kind == ALPHA_Z85 { return b85_punct_value(Z85_PUNCT, c); }
+        return b85_punct_value(B85_PUNCT, c);
     }
     if c - '!' < 85 { return c - '!'; }
     return INVALID;
@@ -105,6 +151,22 @@ fn ascii85_encode(out: u8[>..]&, src: const u8[:], opts: Options) {
 // buffer of the caller.
 fn base85_encode(out: u8[>..]&, src: const u8[:], opts: Options) {
     encode_b85(out, src, opts, ALPHA_BASE85);
+}
+
+// z85_encode writes the Z85 text of RFC 32 of the bytes into the buffer
+// of the caller. The length of the bytes must be a multiple of 4. It
+// gives a code and a position. It writes nothing when it finds a fault.
+fn z85_encode(out: u8[>..]&, src: const u8[:], opts: Options) -> i64, i64 {
+    let rest = src.len % B85_GROUP_BYTES;
+    if rest != 0 { return ERR_BAD_LENGTH, src.len - rest; }
+    encode_b85(out, src, opts, ALPHA_Z85);
+    return ERR_OK, -1;
+}
+
+// z85_decode reads the Z85 text of RFC 32 into the buffer of the caller.
+// It gives a code and a position. The text holds whole groups only.
+fn z85_decode(out: u8[>..]&, src: const u8[:], opts: Options) -> i64, i64 {
+    return decode_b85(out, src, opts, ALPHA_Z85);
 }
 
 // encode_b85 writes the text of the bytes into the buffer of the caller.
@@ -214,10 +276,10 @@ fn decode_b85(out: u8[>..]&, src: const u8[:], opts: Options, kind: i64) -> i64,
         pos = s.first_bad;
     }
 
-    // A tail of 1 character holds no byte. The check of the length runs
-    // before the check of the overflow. A tail of 1 character can carry
-    // both faults at the same position.
-    if s.tail_len == 1 {
+    // A tail that is too short to hold a byte. The check of the length
+    // runs before the check of the overflow. Both faults can stand at the
+    // same position.
+    if s.tail_len > 0 && s.tail_len < b85_min_tail(kind) {
         if pos < 0 || s.group_start < pos {
             code = ERR_BAD_LENGTH;
             pos = s.group_start;

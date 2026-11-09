@@ -59,6 +59,15 @@ fn main() {
     print("read   : ", encoding::error_text(code5), " at ", pos5, "\n");
     print("same   : ", back == bytes, "\n");
 
+    // Z85 needs a length that is a multiple of 4 bytes.
+    var z85: u8[>..] = [];
+    let key: u8[8] = [0x86, 0x4F, 0xD2, 0x6F, 0xB5, 0x59, 0xF7, 0x5B];
+    let code7, pos7 = encoding::z85_encode(z85, key[..], encoding::strict_options());
+    print("z85    : ", z85[..], " ", encoding::error_text(code7), "\n");
+    var odd: u8[>..] = [];
+    let code8, pos8 = encoding::z85_encode(odd, "abc", encoding::strict_options());
+    print("z85 odd: ", encoding::error_text(code8), " at ", pos8, "\n");
+
     // A group of five characters can hold a value that no four bytes
     // hold. The decoder refuses such a text.
     var over: u8[>..] = [];
