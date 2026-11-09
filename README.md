@@ -9,7 +9,7 @@ The base32, base32hex, Crockford base32, hex, ASCII85, base85 and Z85 codecs for
 Put this line in the root file of your program:
 
 ```goose
-import encoding from "rekanalar/goose-encoding@v0.6.0";
+import encoding from "rekanalar/goose-encoding@v1.0.0";
 ```
 
 The CI runs the gate on Linux, macOS and Windows. It uses Goose v2026.4 and v2026.3 on each.
@@ -128,7 +128,7 @@ The position of a decoder fault counts the bytes of the text from the start of t
 
 ```goose
 import std;
-import encoding from "rekanalar/goose-encoding@v0.6.0";
+import encoding from "rekanalar/goose-encoding@v1.0.0";
 
 fn main() {
     var text: u8[>..] = [];
