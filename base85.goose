@@ -144,7 +144,32 @@ fn b85_value(kind: i64, c: u8) -> u32 {
 // ascii85_encode writes the ASCII85 text of the bytes into the buffer of
 // the caller.
 fn ascii85_encode(out: u8[>..]&, src: const u8[:], opts: Options) {
-    encode_b85(out, src, opts, ALPHA_ASCII85);
+    if !opts.adobe {
+        encode_b85(out, src, opts, ALPHA_ASCII85);
+        return;
+    }
+    // The frame counts in the width of a line, as in Python.
+    let start = out.len;
+    var inner = opts;
+    inner.wrap = 0;
+    out.push('<');
+    out.push('~');
+    encode_b85(out, src, inner, ALPHA_ASCII85);
+    // The end mark stays whole. It moves to a new line when it does not fit.
+    var width = opts.wrap;
+    if width > 0 && width < 2 { width = 2; }
+    wrap_lines(out, start, width);
+    if width > 0 {
+        var line = out.len - start;
+        var i = out.len;
+        while i > start && line == out.len - start {
+            i = i - 1;
+            if out[i] == '\n' { line = out.len - 1 - i; }
+        }
+        if line + 2 > width { out.push('\n'); }
+    }
+    out.push('~');
+    out.push('>');
 }
 
 // base85_encode writes the base85 text of RFC 1924 of the bytes into the
@@ -217,6 +242,7 @@ fn encode_b85(out: u8[>..]&, src: const u8[:], opts: Options, kind: i64) {
         }
         i = i + n;
     }
+    wrap_lines(out, start, opts.wrap);
 }
 
 // b85_word gives the value of n bytes of the source. The bytes stand at
@@ -251,7 +277,22 @@ struct Scan85 {
 // ascii85_decode reads the ASCII85 text into the buffer of the caller.
 // It gives a code and a position.
 fn ascii85_decode(out: u8[>..]&, src: const u8[:], opts: Options) -> i64, i64 {
-    return decode_b85(out, src, opts, ALPHA_ASCII85);
+    if !opts.adobe { return decode_b85(out, src, opts, ALPHA_ASCII85); }
+    // The options ask for the frame of Adobe: "<~" first and "~>" last.
+    // The white space around the frame is skipped on request.
+    var a: i64 = 0;
+    var b: i64 = src.len;
+    while opts.skip_space && a < b && is_space(src[a]) { a = a + 1; }
+    while opts.skip_space && b > a && is_space(src[b - 1]) { b = b - 1; }
+    if b - a < 2 || src[a] != '<' || src[a + 1] != '~' {
+        return ERR_BAD_FRAME, a;
+    }
+    if b - a < 4 || src[b - 2] != '~' || src[b - 1] != '>' {
+        return ERR_BAD_FRAME, b;
+    }
+    let code, pos = decode_b85(out, src[a + 2..b - 2], opts, ALPHA_ASCII85);
+    if code != ERR_OK { return code, pos + a + 2; }
+    return ERR_OK, -1;
 }
 
 // base85_decode reads the base85 text of RFC 1924 into the buffer of the

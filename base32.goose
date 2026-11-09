@@ -198,6 +198,7 @@ fn encode_b32(out: u8[>..]&, src: const u8[:], opts: Options, kind: i64, table: 
         dst[d] = '=';
         d = d + 1;
     }
+    wrap_lines(out, start, opts.wrap);
 }
 
 // What the first pass of the decoder finds.
@@ -330,7 +331,7 @@ fn scan_b32(src: const u8[:], opts: Options, kind: i64, table: const u8[:]) -> S
         }
         s.count = s.count + 1;
         s.last_data = i;
-        if s.first_bad < 0 && b32_value(kind, table, opts, c) == INVALID {
+        if s.first_bad < 0 && (b32_value(kind, table, opts, c) == INVALID || (kind != ALPHA_CUSTOM && !case_ok(opts, c))) {
             s.first_bad = i;
         }
         i = i + 1;

@@ -38,8 +38,15 @@ struct Stream {
 
 // stream_new builds a stream. The caller gives the codec.
 fn stream_new(codec: i64, opts: Options, decoding: bool) -> Stream {
-    return Stream { codec: codec, opts: opts, decoding: decoding, n: 0,
-                    consumed: 0, failed: ERR_OK, fail_pos: -1, .. };
+    var s = Stream { codec: codec, opts: opts, decoding: decoding, n: 0,
+                     consumed: 0, failed: ERR_OK, fail_pos: -1, .. };
+    // A stream cannot place a line break, a separator or a frame that
+    // spans two calls.
+    if opts.wrap > 0 || opts.sep != 0 || opts.adobe {
+        s.failed = ERR_UNSUPPORTED;
+        s.fail_pos = 0;
+    }
+    return s;
 }
 
 // encoder_new builds an encoder for a codec other than the custom one.

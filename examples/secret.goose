@@ -86,6 +86,17 @@ fn main() {
     let code11, pos11 = encoding::stream_finish(enc, streamed);
     print("stream : ", streamed[..], " ", encoding::error_text(code11), "\n");
 
+    // Options: a hex separator, wrapped lines and the frame of Adobe.
+    var fancy = encoding::strict_options();
+    fancy.sep = ':';
+    var hexed: u8[>..] = [];
+    encoding::hex_encode(hexed, "key", fancy);
+    fancy.adobe = true;
+    fancy.wrap = 10;
+    var framed: u8[>..] = [];
+    encoding::ascii85_encode(framed, "hello world", fancy);
+    print("hex sep: ", hexed[..], "\nadobe  : ", framed[..], "\n");
+
     // A group of five characters can hold a value that no four bytes
     // hold. The decoder refuses such a text.
     var over: u8[>..] = [];

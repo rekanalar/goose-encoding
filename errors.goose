@@ -33,6 +33,12 @@ const ERR_OVERFLOW: i64 = 5;
 // padding.
 const ERR_BAD_ALPHABET: i64 = 6;
 
+// The text lacks the frame of Adobe that the options require.
+const ERR_BAD_FRAME: i64 = 7;
+
+// The options ask for something that the call cannot do.
+const ERR_UNSUPPORTED: i64 = 8;
+
 // error_text gives the name of an error code. It gives the name of
 // ERR_OK for a code that the package does not hold.
 fn error_text(code: i64) -> u8[:] {
@@ -43,5 +49,7 @@ fn error_text(code: i64) -> u8[:] {
     if code == ERR_NON_CANONICAL { return "ERR_NON_CANONICAL"; }
     if code == ERR_OVERFLOW { return "ERR_OVERFLOW"; }
     if code == ERR_BAD_ALPHABET { return "ERR_BAD_ALPHABET"; }
+    if code == ERR_BAD_FRAME { return "ERR_BAD_FRAME"; }
+    if code == ERR_UNSUPPORTED { return "ERR_UNSUPPORTED"; }
     return "ERR_OK";
 }

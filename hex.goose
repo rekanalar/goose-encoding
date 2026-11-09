@@ -29,20 +29,36 @@ fn hex_value(c: u8) -> u32 {
     return INVALID;
 }
 
+// hex_sep gives the separator of the options. It gives zero when the
+// options hold none or hold a byte that cannot separate.
+fn hex_sep(opts: Options) -> u8 {
+    let c = opts.sep;
+    if c >= 33 && c <= 126 && hex_value(c) == INVALID { return c; }
+    return 0;
+}
+
 // hex_encode writes the hex text of the bytes into the buffer of the
 // caller.
 fn hex_encode(out: u8[>..]&, src: const u8[:], opts: Options) {
     let start = out.len;
-    out.resize(start + src.len * 2, 0);
+    let sep = hex_sep(opts);
+    var size = src.len * 2;
+    if sep != 0 && src.len > 0 { size = size + src.len - 1; }
+    out.resize(start + size, 0);
     let dst = out[start..];
     var d: i64 = 0;
     var i: i64 = 0;
     while i < src.len {
+        if sep != 0 && i > 0 {
+            dst[d] = sep;
+            d = d + 1;
+        }
         dst[d] = hex_symbol(src[i] >> 4, opts.lower);
         dst[d + 1] = hex_symbol(src[i] & 15, opts.lower);
         d = d + 2;
         i = i + 1;
     }
+    wrap_lines(out, start, opts.wrap);
 }
 
 // hex_decode reads the hex text into the buffer of the caller. It gives
@@ -55,6 +71,9 @@ fn hex_decode(out: u8[>..]&, src: const u8[:], opts: Options) -> i64, i64 {
     var count: i64 = 0;
     var end: i64 = 0;
     var first_bad: i64 = -1;
+    let sep = hex_sep(opts);
+    var after_sep = false;
+    var sep_at: i64 = -1;
     var i: i64 = 0;
     while i < src.len {
         let c = src[i];
@@ -62,12 +81,31 @@ fn hex_decode(out: u8[>..]&, src: const u8[:], opts: Options) -> i64, i64 {
             i = i + 1;
             continue;
         }
-        if first_bad < 0 && hex_value(c) == INVALID {
+        if sep != 0 && c == sep {
+            // A separator stands between two bytes and nowhere else.
+            if first_bad < 0 && (count == 0 || count % 2 != 0 || after_sep) {
+                first_bad = i;
+            }
+            after_sep = true;
+            sep_at = i;
+            i = i + 1;
+            continue;
+        }
+        if sep != 0 && count > 0 && count % 2 == 0 && !after_sep && first_bad < 0 {
+            // Two bytes stand with no separator between them.
+            first_bad = i;
+        }
+        after_sep = false;
+        if first_bad < 0 && (hex_value(c) == INVALID || !case_ok(opts, c)) {
             first_bad = i;
         }
         count = count + 1;
         end = i + 1;
         i = i + 1;
+    }
+    if after_sep && first_bad < 0 {
+        // The text ends with a separator.
+        first_bad = sep_at;
     }
 
     var code: i64 = ERR_OK;
@@ -97,6 +135,10 @@ fn hex_decode(out: u8[>..]&, src: const u8[:], opts: Options) -> i64, i64 {
     while i < src.len {
         let c = src[i];
         if opts.skip_space && is_space(c) {
+            i = i + 1;
+            continue;
+        }
+        if sep != 0 && c == sep {
             i = i + 1;
             continue;
         }

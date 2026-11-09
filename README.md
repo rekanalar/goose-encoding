@@ -9,7 +9,7 @@ The base32, base32hex, Crockford base32, hex, ASCII85, base85 and Z85 codecs for
 Put this line in the root file of your program:
 
 ```goose
-import encoding from "rekanalar/goose-encoding@v0.5.0";
+import encoding from "rekanalar/goose-encoding@v0.6.0";
 ```
 
 The CI runs the gate on Linux, macOS and Windows. It uses Goose v2026.4 and v2026.3 on each.
@@ -92,6 +92,10 @@ The slice `src` is a view of the bytes of the caller. The codec never writes to 
 | `lower` | Writes the lower case letters | Takes either case |
 | `skip_space` | Does nothing | Skips the spaces, the tabs, the carriage returns and the line feeds. The Crockford decoder also skips `-` |
 | `map01` | Does nothing | The letter `I` or `L` makes the base32 decoder read 0 as `O` and 1 as that letter. Any other value turns it off |
+| `sep` | The hex encoder writes this byte between the bytes. Any byte from `!` to `~` that is not a hex digit works. Other values turn it off | The hex decoder requires it between the pairs and refuses it elsewhere |
+| `wrap` | Inserts a line feed after every `wrap` characters. No line feed ends the text. A value of 0 or less turns it off | Does nothing. Set `skip_space` to read the lines |
+| `adobe` | The ASCII85 encoder writes `<~` and `~>` around the text. The frame counts in the width of a line | The ASCII85 decoder requires the frame. Under `skip_space` it ignores white space outside the frame |
+| `exact_case` | Does nothing | Refuses a letter whose case differs from `lower`. It applies to hex, base32, base32hex and Crockford |
 
 The hex codec has no padding. The field `padding` changes nothing for it.
 The ASCII85, base85 and Z85 codecs have no padding and no case. The fields `padding` and `lower` change nothing for them.
@@ -106,6 +110,8 @@ The ASCII85, base85 and Z85 codecs have no padding and no case. The fields `padd
 | `ERR_BAD_PADDING` | The padding is missing, too short, too long or stands in the middle of the text | The index of the first `=` |
 | `ERR_NON_CANONICAL` | The last group of a base32 text holds bits that are not zero. The last group of a base85 text is not the tail of its own bytes | The index of the last character of the last group |
 | `ERR_OVERFLOW` | A group of a base85 text holds a value that is larger than 2 to the power of 32 | The index of the first character of the group |
+| `ERR_BAD_FRAME` | The `<~` or the `~>` of an Adobe text is missing | The index of the missing frame mark. For the end mark it is the index just after the text |
+| `ERR_UNSUPPORTED` | A stream got `wrap`, `sep` or `adobe`, which a stream cannot keep | 0 |
 | `ERR_BAD_ALPHABET` | The alphabet of a custom codec has not 32 symbols, repeats a symbol, or holds `=` or a byte that is not printable | The index of the first bad symbol. For a wrong count it is 0 |
 
 The decoder reports the fault with the smallest place.
@@ -122,7 +128,7 @@ The position of a decoder fault counts the bytes of the text from the start of t
 
 ```goose
 import std;
-import encoding from "rekanalar/goose-encoding@v0.5.0";
+import encoding from "rekanalar/goose-encoding@v0.6.0";
 
 fn main() {
     var text: u8[>..] = [];
@@ -154,6 +160,9 @@ The package reads text from people you do not know. It adds these protections be
   The Go library `encoding/ascii85` wraps that value. It gives wrong bytes and no error. The Rust library `base85` 2.0.0, the Java library of fzakaria and the C# library `SimpleBase` do the same. The Python library and the Rust library `base85-simd` refuse the group. The package refuses it.
 - **The tail of a base85 text has one spelling.** Its characters hold more digits than its bytes need. The Go, the Python, the Rust and the C# libraries take any tail. The Go decoder gives the bytes `66` for the text `Ac` and for the text `Ad`. The package takes the tail of its own bytes only. One text then has one spelling.
 - **A hyphen or a digit never slips in.** The Crockford decoder skips `-` only on request. The base32 decoder maps 0 and 1 only when the caller sets `map01`. The Crockford `=` is a bad byte.
+- **The frame is checked, not guessed.** Python `a85decode(adobe=True)` and the C# library remove a frame that stands. The package under `adobe` requires both marks. A cut text then gives `ERR_BAD_FRAME`, not a short payload.
+- **The separator is strict.** Python `bytes.fromhex` skips every space. The package under `sep` refuses a leading, a trailing, a doubled or a missing separator. One text then has one spelling.
+- **The exact case is on request.** The Go library `encoding/base32` and Python `b32decode` take upper case only. The package takes either case by default and refuses the other case under `exact_case`.
 - **A bad alphabet is a fault.** The custom codec checks the alphabet before it writes. It refuses a repeated symbol, `=` and a byte that is not printable. A repeated symbol gives two values one text.
 - **Z85 takes no wrapped group and no stray byte.** The Node library `z85` wraps a group that holds too much. It also takes a space inside the text. Both give wrong bytes. The package refuses both, and skips white space only under the text options.
 - **The output never grows past the input.** At most 5 bytes come from 8 characters of a base32 text. At most 1 byte comes from 2 characters of a hex text. At most 4 bytes come from 5 characters of a base85 text. The shortcut `z` gives 4 bytes from 1 character. The output buffer is sized before the write.
@@ -167,21 +176,23 @@ These are the places where this package does less than a reference library.
 - **No base64.** The standard library holds the base64 codec. The package holds base32, base32hex and hex.
 - **Z85 holds whole groups only.** RFC 32 asks for a multiple of 4 bytes and a multiple of 5 characters. The Python library `base64` pads on encode and takes a tail on decode. The package refuses both with `ERR_BAD_LENGTH`. The Rust library `z85` refuses them too.
 - **Z85 has no shortcut.** The character `z` is a digit of the value 35. The encoder gives a code, because it can fail.
-- **No frame of Adobe.** The package neither reads nor writes `<~` and `~>`. The Go library leaves the frame to the caller. The Rust library `ascii85` writes it always. The C# library and the Java library remove it when it stands. The npm package `base85` writes it in its variant `ascii85`. The caller removes the frame.
+- **The frame of Adobe is an option.** The references disagree. The Go library leaves the frame to the caller. The Rust library `ascii85` writes it always. The package writes it only under `adobe`.
+- **The line width counts the frame.** Python `a85encode(wrapcol, adobe=True)` and the package agree. The width covers the digits and the frame marks. The end mark `~>` never splits. It moves to a new line when it does not fit. A stream cannot wrap.
 - **No shortcut `y`.** The package refuses the `y` of btoa. It stands for four spaces. The C# library takes it and writes it. The Python library takes it under the argument `foldspaces=True`. It is not a part of the Adobe format.
 - **The white space is skipped only on request.** The Go library and the Python library skip the white space always. The Rust library `base85` and the Python library `b85decode` refuse it. The package skips it under the text options.
 - **A group that holds too much is a fault.** The Go library `encoding/ascii85` gives wrong bytes for such a group. The Rust library `base85` 2.0.0, the Java library of fzakaria and the C# library `SimpleBase` do the same. The package refuses the group.
 - **A tail of one character is a fault.** The Go library and the Rust libraries refuse such a tail. The Python, the Java and the C# libraries give no bytes and no error. The package refuses it.
 - **The encoder writes the shortcut `z`.** The Rust library `ascii85` writes no `z` for a group of four zero bytes. The Go library and the Python library write it. The package writes it.
 - **The streams take slices.** The Go library holds `io.Writer` and `io.Reader` types. The Goose standard library holds no such interface. A stream takes a chunk and fills a buffer of the caller. A stream of text holds at most 256 bytes of one open group, with its white space and padding. A longer group gives `ERR_BAD_LENGTH`. A bad byte or a bad padding in that group gives its own fault.
-- **No hex dump.** The Go function `hex.Dumper` writes a dump with an offset column. No other reference holds it. The Python `bytes.hex` and the Java `HexFormat` write a separator between bytes. The Go and Rust libraries do not. The package writes the bytes with no separator.
+- **No hex dump.** The Go function `hex.Dumper` writes a dump with an offset column. No other reference holds it. The package holds the separator and the line width, and no dump.
 - **A custom alphabet has 32 symbols.** The Rust library `data-encoding` builds alphabets of 2 to 64 symbols. The Go library `encoding/base32` takes 32. The Python and Java libraries take none. The package takes 32 for base32. The standard library holds base64. Hex and base85 have fixed alphabets.
 - **No check symbol for Crockford.** The format allows a check symbol, modulo 37. The C++ library `cppcodec` builds none. The package builds none.
 - **`map01` takes a letter.** The Python library `base64` takes the letter as an argument and `casefold` as a second one. The package takes either case at all times, so it holds no `casefold`.
-- **The options hold a new field.** The field `map01` is new. A program that builds `Options` with a literal must set it. A program that calls `strict_options` or `text_options` needs no change.
+- **The options hold new fields.** The fields `sep`, `wrap`, `adobe` and `exact_case` are new. A program that builds `Options` with a literal must set them. A program that calls `strict_options` or `text_options` needs no change.
+- **A stream refuses some options.** A stream with `wrap`, `sep` or `adobe` gives `ERR_UNSUPPORTED` at the first call.
 - **No base58 and no varint.**
-- **The decoder has one rule for the case.** It takes a letter in either case. The Go library `encoding/base32` and the Guava library `base32` refuse a lower case letter. The Apache Commons Codec and the Perl library `Convert::Base32` take it.
+- **The decoder takes either case by default.** The option `exact_case` turns that off. The Go library `encoding/base32` and the Guava library `base32` refuse a lower case letter. The Apache Commons Codec and the Perl library `Convert::Base32` take it.
 - **The decoder has one rule for the padding.** It requires the padding under the strict options. It takes the padding as optional under the text options. The JDK library `java.util.Base64` always takes it as optional. The Apache Commons Codec takes a padding that stands in the middle of the text.
 - **The decoder has no lenient mode.** It never skips a byte that is not in the alphabet. The Apache Commons Codec skips every such byte under its default policy. The Java library `java.util.Base64` in its MIME mode skips every byte that is not in the alphabet.
 - **A stream that fails keeps failing.** A stream that found a fault gives that fault again. The caller builds a new stream to start over.
-- **The encoder writes no line break.** The Python library `base64.encodebytes` writes a line of 76 characters. The Perl library `MIME::Base64` writes such a line. The OpenSSL library writes one too. The package writes the text in one line.
+- **The line width is off by default.** The Python library `base64.encodebytes` writes a line of 76 characters. The Perl library `MIME::Base64` does too. The package writes one line unless `wrap` is set.
