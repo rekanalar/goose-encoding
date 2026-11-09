@@ -1,4 +1,5 @@
-// The base32 and the base32hex codecs.
+// The base32, the base32hex and the Crockford base32 codecs, and the
+// codec of a custom alphabet of 32 symbols.
 //
 // A group holds 8 characters for 5 bytes. A tail holds 2, 4, 5 or 7
 // characters. The bits that a tail leaves over must be zero.
@@ -15,6 +16,15 @@ const ALPHA_BASE32: i64 = 0;
 // The kind of the alphabet of RFC 4648 section 7.
 const ALPHA_BASE32HEX: i64 = 1;
 
+// The kind of the alphabet of Crockford.
+const ALPHA_CROCKFORD: i64 = 2;
+
+// The kind of an alphabet that the caller gives.
+const ALPHA_CUSTOM: i64 = 3;
+
+// The symbols of Crockford base32. The alphabet leaves out I, L, O, U.
+const B32_CROCKFORD: const u8[:] = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+
 // The count of the characters of a group.
 const GROUP_CHARS: i64 = 8;
 
@@ -22,9 +32,12 @@ const GROUP_CHARS: i64 = 8;
 const GROUP_BYTES: i64 = 5;
 
 // b32_symbol gives the character of a value of 5 bits.
-fn b32_symbol(kind: i64, v: u8, lower: bool) -> u8 {
+fn b32_symbol(kind: i64, table: const u8[:], v: u8, lower: bool) -> u8 {
     var c: u8 = 'A';
-    if kind == ALPHA_BASE32HEX {
+    if kind == ALPHA_CUSTOM { return table[v]; }
+    if kind == ALPHA_CROCKFORD {
+        c = B32_CROCKFORD[v];
+    } else if kind == ALPHA_BASE32HEX {
         if v < 10 { c = '0' + v; } else { c = 'A' + (v - 10); }
     } else {
         if v < 26 { c = 'A' + v; } else { c = '2' + (v - 26); }
@@ -35,7 +48,21 @@ fn b32_symbol(kind: i64, v: u8, lower: bool) -> u8 {
 
 // b32_value gives the value of a character of the alphabet. It gives
 // INVALID for a byte that is not in the alphabet.
-fn b32_value(kind: i64, c: u8) -> u32 {
+fn b32_value(kind: i64, table: const u8[:], opts: Options, c0: u8) -> u32 {
+    var c = c0;
+    if kind == ALPHA_CUSTOM { return b32_find(table, c); }
+    if kind == ALPHA_CROCKFORD {
+        // The format reads O as 0, and I and L as 1. Either case.
+        if c == 'O' || c == 'o' { c = '0'; }
+        if c == 'I' || c == 'i' || c == 'L' || c == 'l' { c = '1'; }
+        if c - 'a' < 26 { c = c - 32; }
+        return b32_find(B32_CROCKFORD, c);
+    }
+    if kind == ALPHA_BASE32 && (opts.map01 == 'I' || opts.map01 == 'L') {
+        // RFC 4648 section 2.4: the caller asks for the mapping.
+        if c == '0' { c = 'O'; }
+        if c == '1' { c = opts.map01; }
+    }
     if kind == ALPHA_BASE32HEX {
         if c - '0' < 10 { return c - '0'; }
         if c - 'A' < 22 { return 10 + (c - 'A'); }
@@ -48,26 +75,99 @@ fn b32_value(kind: i64, c: u8) -> u32 {
     return INVALID;
 }
 
+// b32_find gives the place of a byte in a list of 32 symbols. It gives
+// INVALID for a byte that the list does not hold.
+fn b32_find(table: const u8[:], c: u8) -> u32 {
+    var i: i64 = 0;
+    while i < table.len {
+        if table[i] == c { return i as u32; }
+        i = i + 1;
+    }
+    return INVALID;
+}
+
+// b32_padded tells whether the codec uses the padding. Crockford base32
+// has none.
+fn b32_padded(kind: i64) -> bool {
+    return kind != ALPHA_CROCKFORD;
+}
+
+// b32_skips tells whether the decoder skips a byte. The white space is
+// skipped on request. The Crockford format also lets a hyphen stand
+// anywhere. The decoder skips it on the same request.
+fn b32_skips(kind: i64, opts: Options, c: u8) -> bool {
+    if !opts.skip_space { return false; }
+    return is_space(c) || (kind == ALPHA_CROCKFORD && c == '-');
+}
+
+// alphabet_fault checks an alphabet of 32 symbols. It gives a code and a
+// position. A symbol is a printable byte from 33 to 126. No symbol is
+// the padding and no symbol repeats.
+fn alphabet_fault(chars: const u8[:]) -> i64, i64 {
+    if chars.len != 32 { return ERR_BAD_ALPHABET, 0; }
+    var i: i64 = 0;
+    while i < 32 {
+        let c = chars[i];
+        if c < 33 || c > 126 || c == '=' { return ERR_BAD_ALPHABET, i; }
+        var j: i64 = 0;
+        while j < i {
+            if chars[j] == c { return ERR_BAD_ALPHABET, i; }
+            j = j + 1;
+        }
+        i = i + 1;
+    }
+    return ERR_OK, -1;
+}
+
+// base32crockford_encode writes the Crockford base32 text of the bytes
+// into the buffer of the caller. The text has no padding.
+fn base32crockford_encode(out: u8[>..]&, src: const u8[:], opts: Options) {
+    encode_b32(out, src, opts, ALPHA_CROCKFORD, "");
+}
+
+// base32crockford_decode reads the Crockford base32 text into the buffer
+// of the caller. It gives a code and a position.
+fn base32crockford_decode(out: u8[>..]&, src: const u8[:], opts: Options) -> i64, i64 {
+    return decode_b32(out, src, opts, ALPHA_CROCKFORD, "");
+}
+
+// custom32_encode writes the text of the bytes with an alphabet of 32
+// symbols. It gives a code and a position. A bad alphabet writes nothing.
+fn custom32_encode(out: u8[>..]&, src: const u8[:], alphabet: const u8[:], opts: Options) -> i64, i64 {
+    let code, pos = alphabet_fault(alphabet);
+    if code != ERR_OK { return code, pos; }
+    encode_b32(out, src, opts, ALPHA_CUSTOM, alphabet);
+    return ERR_OK, -1;
+}
+
+// custom32_decode reads the text with an alphabet of 32 symbols. It
+// gives a code and a position. Each symbol is read exactly.
+fn custom32_decode(out: u8[>..]&, src: const u8[:], alphabet: const u8[:], opts: Options) -> i64, i64 {
+    let code, pos = alphabet_fault(alphabet);
+    if code != ERR_OK { return code, pos; }
+    return decode_b32(out, src, opts, ALPHA_CUSTOM, alphabet);
+}
+
 // base32_encode writes the base32 text of the bytes into the buffer of
 // the caller.
 fn base32_encode(out: u8[>..]&, src: const u8[:], opts: Options) {
-    encode_b32(out, src, opts, ALPHA_BASE32);
+    encode_b32(out, src, opts, ALPHA_BASE32, "");
 }
 
 // base32hex_encode writes the base32hex text of the bytes into the
 // buffer of the caller.
 fn base32hex_encode(out: u8[>..]&, src: const u8[:], opts: Options) {
-    encode_b32(out, src, opts, ALPHA_BASE32HEX);
+    encode_b32(out, src, opts, ALPHA_BASE32HEX, "");
 }
 
 // encode_b32 writes the text of the bytes into the buffer of the
 // caller. It adds its text to the bytes that the buffer holds.
-fn encode_b32(out: u8[>..]&, src: const u8[:], opts: Options, kind: i64) {
+fn encode_b32(out: u8[>..]&, src: const u8[:], opts: Options, kind: i64, table: const u8[:]) {
     let start = out.len;
     // The text of n bytes holds n * 8 / 5 characters.
     let chars = (src.len * 8 + 4) / 5;
     var need = chars;
-    if opts.padding {
+    if opts.padding && b32_padded(kind) {
         need = ((chars + GROUP_CHARS - 1) / GROUP_CHARS) * GROUP_CHARS;
     }
     out.resize(start + need, 0);
@@ -82,7 +182,7 @@ fn encode_b32(out: u8[>..]&, src: const u8[:], opts: Options, kind: i64) {
         bits = bits + 8;
         while bits >= 5 {
             bits = bits - 5;
-            dst[d] = b32_symbol(kind, ((buf >> bits) & 31) as u8, opts.lower);
+            dst[d] = b32_symbol(kind, table, ((buf >> bits) & 31) as u8, opts.lower);
             buf = buf & ((1 << bits) - 1);
             d = d + 1;
         }
@@ -91,7 +191,7 @@ fn encode_b32(out: u8[>..]&, src: const u8[:], opts: Options, kind: i64) {
     if bits > 0 {
         // The last character holds the bits that no byte uses. They are
         // zero, so the text has one spelling.
-        dst[d] = b32_symbol(kind, ((buf << (5 - bits)) & 31) as u8, opts.lower);
+        dst[d] = b32_symbol(kind, table, ((buf << (5 - bits)) & 31) as u8, opts.lower);
         d = d + 1;
     }
     while d < need {
@@ -114,21 +214,21 @@ struct Scan {
 // base32_decode reads the base32 text into the buffer of the caller. It
 // gives a code and a position.
 fn base32_decode(out: u8[>..]&, src: const u8[:], opts: Options) -> i64, i64 {
-    return decode_b32(out, src, opts, ALPHA_BASE32);
+    return decode_b32(out, src, opts, ALPHA_BASE32, "");
 }
 
 // base32hex_decode reads the base32hex text into the buffer of the
 // caller. It gives a code and a position.
 fn base32hex_decode(out: u8[>..]&, src: const u8[:], opts: Options) -> i64, i64 {
-    return decode_b32(out, src, opts, ALPHA_BASE32HEX);
+    return decode_b32(out, src, opts, ALPHA_BASE32HEX, "");
 }
 
 // decode_b32 reads the text into the buffer of the caller. It gives a
 // code and a position. It leaves the buffer as it was when it finds a
 // fault.
-fn decode_b32(out: u8[>..]&, src: const u8[:], opts: Options, kind: i64) -> i64, i64 {
+fn decode_b32(out: u8[>..]&, src: const u8[:], opts: Options, kind: i64, table: const u8[:]) -> i64, i64 {
     let start = out.len;
-    let s = scan_b32(src, opts, kind);
+    let s = scan_b32(src, opts, kind, table);
 
     var code: i64 = ERR_OK;
     var pos: i64 = -1;
@@ -149,7 +249,7 @@ fn decode_b32(out: u8[>..]&, src: const u8[:], opts: Options, kind: i64) -> i64,
     }
 
     // A padding that is wrong.
-    let pad_pos = padding_fault(s, opts);
+    let pad_pos = padding_fault(s, opts, kind);
     if pad_pos >= 0 && (pos < 0 || pad_pos < pos) {
         code = ERR_BAD_PADDING;
         pos = pad_pos;
@@ -165,7 +265,7 @@ fn decode_b32(out: u8[>..]&, src: const u8[:], opts: Options, kind: i64) -> i64,
     // the bits of a broken text mean nothing.
     let extra = (tail * 5) % 8;
     if extra > 0 {
-        let last = b32_value(kind, src[s.last_data]) as i64;
+        let last = b32_value(kind, table, opts, src[s.last_data]) as i64;
         if (last & ((1 << extra) - 1)) != 0 {
             return ERR_NON_CANONICAL, s.last_data;
         }
@@ -182,12 +282,12 @@ fn decode_b32(out: u8[>..]&, src: const u8[:], opts: Options, kind: i64) -> i64,
     var i: i64 = 0;
     while i < src.len {
         let c = src[i];
-        if opts.skip_space && is_space(c) {
+        if b32_skips(kind, opts, c) {
             i = i + 1;
             continue;
         }
-        if c == '=' { break; }
-        buf = (buf << 5) | b32_value(kind, c);
+        if c == '=' && b32_padded(kind) { break; }
+        buf = (buf << 5) | b32_value(kind, table, opts, c);
         bits = bits + 5;
         while bits >= 8 {
             bits = bits - 8;
@@ -202,17 +302,17 @@ fn decode_b32(out: u8[>..]&, src: const u8[:], opts: Options, kind: i64) -> i64,
 
 // scan_b32 counts the characters of the text and finds the faults that
 // the counts give.
-fn scan_b32(src: const u8[:], opts: Options, kind: i64) -> Scan {
+fn scan_b32(src: const u8[:], opts: Options, kind: i64, table: const u8[:]) -> Scan {
     var s = Scan { count: 0, first_bad: -1, first_pad: -1, pad_count: 0,
                    after_pad: -1, group_start: -1, last_data: -1 };
     var i: i64 = 0;
     while i < src.len {
         let c = src[i];
-        if opts.skip_space && is_space(c) {
+        if b32_skips(kind, opts, c) {
             i = i + 1;
             continue;
         }
-        if c == '=' {
+        if c == '=' && b32_padded(kind) {
             if s.first_pad < 0 { s.first_pad = i; }
             s.pad_count = s.pad_count + 1;
             i = i + 1;
@@ -230,7 +330,7 @@ fn scan_b32(src: const u8[:], opts: Options, kind: i64) -> Scan {
         }
         s.count = s.count + 1;
         s.last_data = i;
-        if s.first_bad < 0 && b32_value(kind, c) == INVALID {
+        if s.first_bad < 0 && b32_value(kind, table, opts, c) == INVALID {
             s.first_bad = i;
         }
         i = i + 1;
@@ -240,7 +340,8 @@ fn scan_b32(src: const u8[:], opts: Options, kind: i64) -> Scan {
 
 // padding_fault gives the place of the fault of the padding. It gives
 // -1 when the padding is right.
-fn padding_fault(s: Scan, opts: Options) -> i64 {
+fn padding_fault(s: Scan, opts: Options, kind: i64) -> i64 {
+    if !b32_padded(kind) { return -1; }
     let tail = s.count % GROUP_CHARS;
     var required: i64 = 0;
     if tail != 0 { required = GROUP_CHARS - tail; }

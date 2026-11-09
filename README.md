@@ -2,14 +2,14 @@
 
 [![ci](https://github.com/rekanalar/goose-encoding/actions/workflows/ci.yml/badge.svg)](https://github.com/rekanalar/goose-encoding/actions/workflows/ci.yml)
 
-The base32, base32hex, hex, ASCII85, base85 and Z85 codecs for the [Goose](https://github.com/aardappel/goose) programming language.
+The base32, base32hex, Crockford base32, hex, ASCII85, base85 and Z85 codecs for the [Goose](https://github.com/aardappel/goose) programming language. It also holds a base32 codec for an alphabet that you give.
 
 ## Install
 
 Put this line in the root file of your program:
 
 ```goose
-import encoding from "rekanalar/goose-encoding@v0.3.0";
+import encoding from "rekanalar/goose-encoding@v0.4.0";
 ```
 
 The CI runs the gate on Linux, macOS and Windows. It uses Goose v2026.4 and v2026.3 on each.
@@ -32,6 +32,9 @@ The package is pure Goose. It depends on the standard library only.
 | ASCII85 | Java `com.github.fzakaria:ascii85` |
 | base85 | Perl `MIME::Base85`, `Convert::Base85`, `Math::Base85` |
 | ASCII85 and base85 | C# `SimpleBase` |
+| Crockford base32 | C++ `cppcodec` (`base32_crockford`) |
+| Custom alphabet | Rust `data-encoding` (`Specification`), Go `encoding/base32` (`NewEncoding`) |
+| `map01` | Python `base64` (`b32decode`) |
 | Z85 | Python `base64` (`z85encode`, `z85decode`), Rust `z85`, Node npm `z85` |
 
 ## Features
@@ -39,6 +42,9 @@ The package is pure Goose. It depends on the standard library only.
 - **Base32 and base32hex.** The alphabets of RFC 4648 §6 and §7. Encode and decode, with the padding or without it.
 - **Hex.** Two characters for each byte. Encode and decode, in either case.
 - **ASCII85 and base85.** Five characters for every four bytes. The alphabet of Adobe and the alphabet of RFC 1924. Encode and decode.
+- **Crockford base32.** The alphabet without `I`, `L`, `O` and `U`. No padding. The decoder reads `O` as 0 and `I` and `L` as 1.
+- **A custom alphabet.** Your own 32 symbols for the base32 codec. The package checks the alphabet.
+- **The `map01` option.** The base32 decoder can read 0 as `O` and 1 as `I` or `L`. RFC 4648 section 2.4 allows it.
 - **Z85.** The codec of ZeroMQ RFC 32. Five characters for every four bytes, with its own alphabet. The input holds whole groups only. Encode and decode.
 - **Strict decoders.** Every decoder refuses a byte outside the alphabet. It refuses a wrong padding. It refuses the leftover bits that are not zero. It refuses a base85 or Z85 group that holds more than 32 bits.
 - **The place of the fault.** Every decoder gives the position of the first fault in the text.
@@ -58,6 +64,10 @@ The package is pure Goose. It depends on the standard library only.
 | `ascii85_decode(out, src, opts)` | Read the ASCII85 text. It gives a code and a position |
 | `base85_encode(out, src, opts)` | Write the base85 text of RFC 1924 of the bytes |
 | `base85_decode(out, src, opts)` | Read the base85 text of RFC 1924. It gives a code and a position |
+| `base32crockford_encode(out, src, opts)` | Write the Crockford base32 text of the bytes |
+| `base32crockford_decode(out, src, opts)` | Read the Crockford base32 text. It gives a code and a position |
+| `custom32_encode(out, src, alphabet, opts)` | Write the base32 text with an alphabet of 32 symbols. It gives a code and a position |
+| `custom32_decode(out, src, alphabet, opts)` | Read the text of an alphabet of 32 symbols. It gives a code and a position |
 | `z85_encode(out, src, opts)` | Write the Z85 text of the bytes. It gives a code and a position. The length of the bytes is a multiple of 4 |
 | `z85_decode(out, src, opts)` | Read the Z85 text. It gives a code and a position. The length of the text is a multiple of 5 |
 | `strict_options()` | The rules of RFC 4648 |
@@ -75,7 +85,8 @@ The slice `src` is a view of the bytes of the caller. The codec never writes to 
 |---|---|---|
 | `padding` | Writes the `=` padding | Requires the padding. It takes a text with no padding when the field is false |
 | `lower` | Writes the lower case letters | Takes either case |
-| `skip_space` | Does nothing | Skips the spaces, the tabs, the carriage returns and the line feeds |
+| `skip_space` | Does nothing | Skips the spaces, the tabs, the carriage returns and the line feeds. The Crockford decoder also skips `-` |
+| `map01` | Does nothing | The letter `I` or `L` makes the base32 decoder read 0 as `O` and 1 as that letter. Any other value turns it off |
 
 The hex codec has no padding. The field `padding` changes nothing for it.
 The ASCII85, base85 and Z85 codecs have no padding and no case. The fields `padding` and `lower` change nothing for them.
@@ -90,6 +101,7 @@ The ASCII85, base85 and Z85 codecs have no padding and no case. The fields `padd
 | `ERR_BAD_PADDING` | The padding is missing, too short, too long or stands in the middle of the text | The index of the first `=` |
 | `ERR_NON_CANONICAL` | The last group of a base32 text holds bits that are not zero. The last group of a base85 text is not the tail of its own bytes | The index of the last character of the last group |
 | `ERR_OVERFLOW` | A group of a base85 text holds a value that is larger than 2 to the power of 32 | The index of the first character of the group |
+| `ERR_BAD_ALPHABET` | The alphabet of a custom codec has not 32 symbols, repeats a symbol, or holds `=` or a byte that is not printable | The index of the first bad symbol. For a wrong count it is 0 |
 
 The decoder reports the fault with the smallest place.
 A fault that stands later in the text never hides a fault that stands earlier in it.
@@ -98,7 +110,7 @@ A fault that stands later in the text never hides a fault that stands earlier in
 
 ```goose
 import std;
-import encoding from "rekanalar/goose-encoding@v0.3.0";
+import encoding from "rekanalar/goose-encoding@v0.4.0";
 
 fn main() {
     var text: u8[>..] = [];
@@ -129,6 +141,8 @@ The package reads text from people you do not know. It adds these protections be
 
   The Go library `encoding/ascii85` wraps that value. It gives wrong bytes and no error. The Rust library `base85` 2.0.0, the Java library of fzakaria and the C# library `SimpleBase` do the same. The Python library and the Rust library `base85-simd` refuse the group. The package refuses it.
 - **The tail of a base85 text has one spelling.** Its characters hold more digits than its bytes need. The Go, the Python, the Rust and the C# libraries take any tail. The Go decoder gives the bytes `66` for the text `Ac` and for the text `Ad`. The package takes the tail of its own bytes only. One text then has one spelling.
+- **A hyphen or a digit never slips in.** The Crockford decoder skips `-` only on request. The base32 decoder maps 0 and 1 only when the caller sets `map01`. The Crockford `=` is a bad byte.
+- **A bad alphabet is a fault.** The custom codec checks the alphabet before it writes. It refuses a repeated symbol, `=` and a byte that is not printable. A repeated symbol gives two values one text.
 - **Z85 takes no wrapped group and no stray byte.** The Node library `z85` wraps a group that holds too much. It also takes a space inside the text. Both give wrong bytes. The package refuses both, and skips white space only under the text options.
 - **The output never grows past the input.** At most 5 bytes come from 8 characters of a base32 text. At most 1 byte comes from 2 characters of a hex text. At most 4 bytes come from 5 characters of a base85 text. The shortcut `z` gives 4 bytes from 1 character. The output buffer is sized before the write.
 
@@ -148,9 +162,10 @@ These are the places where this package does less than a reference library.
 - **A tail of one character is a fault.** The Go library and the Rust libraries refuse such a tail. The Python, the Java and the C# libraries give no bytes and no error. The package refuses it.
 - **The encoder writes the shortcut `z`.** The Rust library `ascii85` writes no `z` for a group of four zero bytes. The Go library and the Python library write it. The package writes it.
 - **No streaming.** The Go library `encoding/base32` holds `NewEncoder` and `NewDecoder`. The Guava library `BaseEncoding` holds `encodingStream`. The Apache Commons Codec holds streams. The Rust library `data-encoding`, the Python library `base64` and the Perl modules hold no stream. The package works on a buffer that the caller holds.
-- **No custom alphabet.** The Rust library `data-encoding` builds any alphabet from a specification. The Go library `encoding/base64` holds `NewEncoding`. The Python library `base64` and the Perl modules hold no custom alphabet. The package holds the alphabets of RFC 4648, Adobe, RFC 1924 and ZeroMQ.
-- **No Crockford base32.** The Go library `x/crypto` and the C++ library `cppcodec` hold it. The package holds the two alphabets of RFC 4648.
-- **No `map01` and no `casefold`.** The Python library `base64` holds the arguments `map01` and `casefold` for `b32decode`. No other reference holds them. The package always takes a letter in either case.
+- **A custom alphabet has 32 symbols.** The Rust library `data-encoding` builds alphabets of 2 to 64 symbols. The Go library `encoding/base32` takes 32. The Python and Java libraries take none. The package takes 32 for base32. The standard library holds base64. Hex and base85 have fixed alphabets.
+- **No check symbol for Crockford.** The format allows a check symbol, modulo 37. The C++ library `cppcodec` builds none. The package builds none.
+- **`map01` takes a letter.** The Python library `base64` takes the letter as an argument and `casefold` as a second one. The package takes either case at all times, so it holds no `casefold`.
+- **The options hold a new field.** The field `map01` is new. A program that builds `Options` with a literal must set it. A program that calls `strict_options` or `text_options` needs no change.
 - **No base58 and no varint.**
 - **The decoder has one rule for the case.** It takes a letter in either case. The Go library `encoding/base32` and the Guava library `base32` refuse a lower case letter. The Apache Commons Codec and the Perl library `Convert::Base32` take it.
 - **The decoder has one rule for the padding.** It requires the padding under the strict options. It takes the padding as optional under the text options. The JDK library `java.util.Base64` always takes it as optional. The Apache Commons Codec takes a padding that stands in the middle of the text.

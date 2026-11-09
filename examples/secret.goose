@@ -68,6 +68,16 @@ fn main() {
     let code8, pos8 = encoding::z85_encode(odd, "abc", encoding::strict_options());
     print("z85 odd: ", encoding::error_text(code8), " at ", pos8, "\n");
 
+    // Crockford base32 has no padding. A person can read it aloud.
+    var crock: u8[>..] = [];
+    encoding::base32crockford_encode(crock, bytes, encoding::strict_options());
+    print("crock  : ", crock[..], "\n");
+    var mine: u8[>..] = [];
+    let code9, pos9 = encoding::custom32_encode(mine, bytes, "0123456789abcdefghijklmnopqrstuv", encoding::strict_options());
+    print("custom : ", mine[..], " ", encoding::error_text(code9), "\n");
+    let code10, pos10 = encoding::custom32_encode(mine, bytes, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", encoding::strict_options());
+    print("alpha  : ", encoding::error_text(code10), " at ", pos10, "\n");
+
     // A group of five characters can hold a value that no four bytes
     // hold. The decoder refuses such a text.
     var over: u8[>..] = [];
