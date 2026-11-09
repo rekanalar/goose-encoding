@@ -9,7 +9,7 @@ The base32, base32hex, Crockford base32, hex, ASCII85, base85 and Z85 codecs for
 Put this line in the root file of your program:
 
 ```goose
-import encoding from "rekanalar/goose-encoding@v0.4.0";
+import encoding from "rekanalar/goose-encoding@v0.5.0";
 ```
 
 The CI runs the gate on Linux, macOS and Windows. It uses Goose v2026.4 and v2026.3 on each.
@@ -45,6 +45,7 @@ The package is pure Goose. It depends on the standard library only.
 - **Crockford base32.** The alphabet without `I`, `L`, `O` and `U`. No padding. The decoder reads `O` as 0 and `I` and `L` as 1.
 - **A custom alphabet.** Your own 32 symbols for the base32 codec. The package checks the alphabet.
 - **The `map01` option.** The base32 decoder can read 0 as `O` and 1 as `I` or `L`. RFC 4648 section 2.4 allows it.
+- **Streams.** An encoder and a decoder for each codec take the data in chunks of any size. The result equals one call on the joined chunks.
 - **Z85.** The codec of ZeroMQ RFC 32. Five characters for every four bytes, with its own alphabet. The input holds whole groups only. Encode and decode.
 - **Strict decoders.** Every decoder refuses a byte outside the alphabet. It refuses a wrong padding. It refuses the leftover bits that are not zero. It refuses a base85 or Z85 group that holds more than 32 bits.
 - **The place of the fault.** Every decoder gives the position of the first fault in the text.
@@ -70,6 +71,10 @@ The package is pure Goose. It depends on the standard library only.
 | `custom32_decode(out, src, alphabet, opts)` | Read the text of an alphabet of 32 symbols. It gives a code and a position |
 | `z85_encode(out, src, opts)` | Write the Z85 text of the bytes. It gives a code and a position. The length of the bytes is a multiple of 4 |
 | `z85_decode(out, src, opts)` | Read the Z85 text. It gives a code and a position. The length of the text is a multiple of 5 |
+| `encoder_new(codec, opts)`, `decoder_new(codec, opts)` | Build a stream for a codec. The codec is one of the `STREAM_` constants |
+| `custom32_encoder_new(alphabet, opts)`, `custom32_decoder_new(alphabet, opts)` | Build a stream for an alphabet of 32 symbols |
+| `stream_write(s, out, chunk)` | Give a chunk to the stream. It writes the whole groups into `out`. It gives a code and a position |
+| `stream_finish(s, out)` | End the stream. It writes the tail or reads the last group. It gives a code and a position. The stream is then empty |
 | `strict_options()` | The rules of RFC 4648 |
 | `text_options()` | The rules of the text that a person typed |
 | `error_text(code)` | The name of a code |
@@ -106,11 +111,18 @@ The ASCII85, base85 and Z85 codecs have no padding and no case. The fields `padd
 The decoder reports the fault with the smallest place.
 A fault that stands later in the text never hides a fault that stands earlier in it.
 
+### The streams
+
+A stream holds the open part of a group between two calls. The `STREAM_` constants name the codecs: `STREAM_BASE32`, `STREAM_BASE32HEX`, `STREAM_CROCKFORD`, `STREAM_CUSTOM32`, `STREAM_HEX`, `STREAM_ASCII85`, `STREAM_BASE85` and `STREAM_Z85`.
+
+The caller passes a stream by reference to `stream_write`. A fault in a call leaves `out` as it was before that call. The bytes of the earlier calls stay. The fault stays in the stream, and every later call gives it again.
+The position of a decoder fault counts the bytes of the text from the start of the stream.
+
 ## Example
 
 ```goose
 import std;
-import encoding from "rekanalar/goose-encoding@v0.4.0";
+import encoding from "rekanalar/goose-encoding@v0.5.0";
 
 fn main() {
     var text: u8[>..] = [];
@@ -161,7 +173,8 @@ These are the places where this package does less than a reference library.
 - **A group that holds too much is a fault.** The Go library `encoding/ascii85` gives wrong bytes for such a group. The Rust library `base85` 2.0.0, the Java library of fzakaria and the C# library `SimpleBase` do the same. The package refuses the group.
 - **A tail of one character is a fault.** The Go library and the Rust libraries refuse such a tail. The Python, the Java and the C# libraries give no bytes and no error. The package refuses it.
 - **The encoder writes the shortcut `z`.** The Rust library `ascii85` writes no `z` for a group of four zero bytes. The Go library and the Python library write it. The package writes it.
-- **No streaming.** The Go library `encoding/base32` holds `NewEncoder` and `NewDecoder`. The Guava library `BaseEncoding` holds `encodingStream`. The Apache Commons Codec holds streams. The Rust library `data-encoding`, the Python library `base64` and the Perl modules hold no stream. The package works on a buffer that the caller holds.
+- **The streams take slices.** The Go library holds `io.Writer` and `io.Reader` types. The Goose standard library holds no such interface. A stream takes a chunk and fills a buffer of the caller. A stream of text holds at most 256 bytes of one open group, with its white space and padding. A longer group gives `ERR_BAD_LENGTH`. A bad byte or a bad padding in that group gives its own fault.
+- **No hex dump.** The Go function `hex.Dumper` writes a dump with an offset column. No other reference holds it. The Python `bytes.hex` and the Java `HexFormat` write a separator between bytes. The Go and Rust libraries do not. The package writes the bytes with no separator.
 - **A custom alphabet has 32 symbols.** The Rust library `data-encoding` builds alphabets of 2 to 64 symbols. The Go library `encoding/base32` takes 32. The Python and Java libraries take none. The package takes 32 for base32. The standard library holds base64. Hex and base85 have fixed alphabets.
 - **No check symbol for Crockford.** The format allows a check symbol, modulo 37. The C++ library `cppcodec` builds none. The package builds none.
 - **`map01` takes a letter.** The Python library `base64` takes the letter as an argument and `casefold` as a second one. The package takes either case at all times, so it holds no `casefold`.
@@ -170,4 +183,5 @@ These are the places where this package does less than a reference library.
 - **The decoder has one rule for the case.** It takes a letter in either case. The Go library `encoding/base32` and the Guava library `base32` refuse a lower case letter. The Apache Commons Codec and the Perl library `Convert::Base32` take it.
 - **The decoder has one rule for the padding.** It requires the padding under the strict options. It takes the padding as optional under the text options. The JDK library `java.util.Base64` always takes it as optional. The Apache Commons Codec takes a padding that stands in the middle of the text.
 - **The decoder has no lenient mode.** It never skips a byte that is not in the alphabet. The Apache Commons Codec skips every such byte under its default policy. The Java library `java.util.Base64` in its MIME mode skips every byte that is not in the alphabet.
+- **A stream that fails keeps failing.** A stream that found a fault gives that fault again. The caller builds a new stream to start over.
 - **The encoder writes no line break.** The Python library `base64.encodebytes` writes a line of 76 characters. The Perl library `MIME::Base64` writes such a line. The OpenSSL library writes one too. The package writes the text in one line.

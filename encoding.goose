@@ -1,5 +1,5 @@
-// encoding - the base32, base32hex, hex, ASCII85, base85 and Z85 codecs for
-// Goose.
+// encoding - the base32, base32hex, Crockford base32, hex, ASCII85, base85
+// and Z85 codecs for Goose, and the streams that run them.
 //
 // The package writes bytes as text and reads text back to bytes.
 // The decoders are strict. They give a code and the position of the
@@ -18,3 +18,4 @@ import common;
 import base32;
 import hex;
 import base85;
+import stream;

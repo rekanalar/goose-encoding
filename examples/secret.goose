@@ -78,6 +78,14 @@ fn main() {
     let code10, pos10 = encoding::custom32_encode(mine, bytes, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", encoding::strict_options());
     print("alpha  : ", encoding::error_text(code10), " at ", pos10, "\n");
 
+    // A stream takes the bytes in chunks. The text equals one call.
+    var enc = encoding::encoder_new(encoding::STREAM_BASE32, encoding::strict_options());
+    var streamed: u8[>..] = [];
+    encoding::stream_write(enc, streamed, "hel");
+    encoding::stream_write(enc, streamed, "lo");
+    let code11, pos11 = encoding::stream_finish(enc, streamed);
+    print("stream : ", streamed[..], " ", encoding::error_text(code11), "\n");
+
     // A group of five characters can hold a value that no four bytes
     // hold. The decoder refuses such a text.
     var over: u8[>..] = [];
