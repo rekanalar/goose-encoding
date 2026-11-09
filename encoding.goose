@@ -1,4 +1,5 @@
-// encoding - the base32, base32hex and hex codecs for Goose.
+// encoding - the base32, base32hex, hex, ASCII85 and base85 codecs for
+// Goose.
 //
 // The package writes bytes as text and reads text back to bytes.
 // The decoders are strict. They give a code and the position of the
@@ -16,3 +17,4 @@ import errors;
 import common;
 import base32;
 import hex;
+import base85;

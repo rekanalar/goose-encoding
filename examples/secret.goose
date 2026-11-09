@@ -44,5 +44,25 @@ fn main() {
     var bad: u8[>..] = [];
     let code4, pos4 = encoding::base32_decode(bad, "NBSWY3D!", encoding::strict_options());
     print("bad    : ", encoding::error_text(code4), " at ", pos4, "\n");
+
+    // The same bytes as ASCII85 and as base85.
+    var a85: u8[>..] = [];
+    encoding::ascii85_encode(a85, bytes, encoding::strict_options());
+    print("ascii85: ", a85[..], "\n");
+    var b85: u8[>..] = [];
+    encoding::base85_encode(b85, bytes, encoding::strict_options());
+    print("base85 : ", b85[..], "\n");
+
+    // The bytes come back from the ASCII85 text.
+    var back: u8[>..] = [];
+    let code5, pos5 = encoding::ascii85_decode(back, a85, encoding::strict_options());
+    print("read   : ", encoding::error_text(code5), " at ", pos5, "\n");
+    print("same   : ", back == bytes, "\n");
+
+    // A group of five characters can hold a value that no four bytes
+    // hold. The decoder refuses such a text.
+    var over: u8[>..] = [];
+    let code6, pos6 = encoding::ascii85_decode(over, "uuuuu", encoding::strict_options());
+    print("over   : ", encoding::error_text(code6), " at ", pos6, "\n");
     return 0;
 }
