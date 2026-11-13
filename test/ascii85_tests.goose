@@ -4,7 +4,7 @@ namespace ascii85_tests;
 import std;
 import os;
 import encoding from "..";
-import common;
+import encoding_checks;
 
 const MEGABYTE: i64 = 1000000;
 
@@ -18,46 +18,46 @@ fn test_encode85() {
     assert(empty2.len == 0);
 
     // The text that the Python library base64 wrote.
-    common::check_a85("A", "5l");
-    common::check_a85("AB", "5sb");
-    common::check_a85("ABC", "5sdp");
-    common::check_a85("ABCD", "5sdq,");
-    common::check_a85("hello", "BOu!rDZ");
-    common::check_a85("\x00\x00\x00\x00", "z");
-    common::check_a85("\xff\xff\xff\xff", "s8W-!");
-    common::check_a85("\x00", "!!");
-    common::check_a85("\x00\x00", "!!!");
-    common::check_a85("\x00\x00\x00", "!!!!");
-    common::check_a85("\x01\x02\x03\x04", "!<N?+");
+    encoding_checks::check_a85("A", "5l");
+    encoding_checks::check_a85("AB", "5sb");
+    encoding_checks::check_a85("ABC", "5sdp");
+    encoding_checks::check_a85("ABCD", "5sdq,");
+    encoding_checks::check_a85("hello", "BOu!rDZ");
+    encoding_checks::check_a85("\x00\x00\x00\x00", "z");
+    encoding_checks::check_a85("\xff\xff\xff\xff", "s8W-!");
+    encoding_checks::check_a85("\x00", "!!");
+    encoding_checks::check_a85("\x00\x00", "!!!");
+    encoding_checks::check_a85("\x00\x00\x00", "!!!!");
+    encoding_checks::check_a85("\x01\x02\x03\x04", "!<N?+");
 
-    common::check_b85("A", "K>");
-    common::check_b85("AB", "K|%");
-    common::check_b85("ABC", "K|(_");
-    common::check_b85("ABCD", "K|(`B");
-    common::check_b85("hello", "Xk~0{Zv");
-    common::check_b85("\x00\x00\x00\x00", "00000");
-    common::check_b85("\xff\xff\xff\xff", "|NsC0");
-    common::check_b85("\x00", "00");
-    common::check_b85("\x00\x00", "000");
-    common::check_b85("\x00\x00\x00", "0000");
-    common::check_b85("\x01\x02\x03\x04", "0RjUA");
+    encoding_checks::check_b85("A", "K>");
+    encoding_checks::check_b85("AB", "K|%");
+    encoding_checks::check_b85("ABC", "K|(_");
+    encoding_checks::check_b85("ABCD", "K|(`B");
+    encoding_checks::check_b85("hello", "Xk~0{Zv");
+    encoding_checks::check_b85("\x00\x00\x00\x00", "00000");
+    encoding_checks::check_b85("\xff\xff\xff\xff", "|NsC0");
+    encoding_checks::check_b85("\x00", "00");
+    encoding_checks::check_b85("\x00\x00", "000");
+    encoding_checks::check_b85("\x00\x00\x00", "0000");
+    encoding_checks::check_b85("\x01\x02\x03\x04", "0RjUA");
 }
 
 fn test_decode85() {
-    common::check_read_a85("BOu!rDZ", "hello");
-    common::check_read_a85("z", "\x00\x00\x00\x00");
-    common::check_read_a85("!!!!!", "\x00\x00\x00\x00");
-    common::check_read_a85("Ac", "f");
-    common::check_read_a85("00000", "\x2f\x3a\x02\xa3");
-    common::check_read_a85("zAc", "\x00\x00\x00\x00f");
+    encoding_checks::check_read_a85("BOu!rDZ", "hello");
+    encoding_checks::check_read_a85("z", "\x00\x00\x00\x00");
+    encoding_checks::check_read_a85("!!!!!", "\x00\x00\x00\x00");
+    encoding_checks::check_read_a85("Ac", "f");
+    encoding_checks::check_read_a85("00000", "\x2f\x3a\x02\xa3");
+    encoding_checks::check_read_a85("zAc", "\x00\x00\x00\x00f");
 
     // The < of the frame of Adobe is a digit of ASCII85.
-    common::check_read_a85("!<N?+", "\x01\x02\x03\x04");
+    encoding_checks::check_read_a85("!<N?+", "\x01\x02\x03\x04");
 
-    common::check_read_b85("Xk~0{Zv", "hello");
-    common::check_read_b85("00000", "\x00\x00\x00\x00");
-    common::check_read_b85("W&", "f");
-    common::check_read_b85("!!!!!", "\xc3\x34\x0a\xe6");
+    encoding_checks::check_read_b85("Xk~0{Zv", "hello");
+    encoding_checks::check_read_b85("00000", "\x00\x00\x00\x00");
+    encoding_checks::check_read_b85("W&", "f");
+    encoding_checks::check_read_b85("!!!!!", "\xc3\x34\x0a\xe6");
 
     // The empty text holds no byte.
     var a: u8[>..] = [];

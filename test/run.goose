@@ -9,7 +9,7 @@ import z85_tests;
 import alphabets_tests;
 import streams_tests;
 import options_more_tests;
-import common;
+import encoding_checks;
 import os;
 
 fn main() {

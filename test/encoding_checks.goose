@@ -1,5 +1,5 @@
 // The helpers that the tests of more than one group share.
-namespace common;
+namespace encoding_checks;
 
 import std;
 import os;

@@ -4,7 +4,7 @@ namespace options_more_tests;
 import std;
 import os;
 import encoding from "..";
-import common;
+import encoding_checks;
 
 fn test_options_more() {
     let strict = encoding::strict_options();
@@ -57,13 +57,13 @@ fn test_options_more() {
     encoding::ascii85_encode(o3, raw, fw);
     assert(o3 == "<~!!*-'\"9eu7\n#RLhG$k3[W&.\noNg'GVB\"(`=5\n2*$$(B+<_pR,\nUFcb~>");
     // The end mark never splits. Python gives "<~BOu!rDZ\n~>" for width 10.
-    var w10 = common::ad_opts(10);
+    var w10 = encoding_checks::ad_opts(10);
     var o10: u8[>..] = [];
     encoding::ascii85_encode(o10, "hello", w10);
     assert(o10 == "<~BOu!rDZ\n~>");
     var w = 1;
     while w < 14 {
-        var ow = common::ad_opts(w);
+        var ow = encoding_checks::ad_opts(w);
         var oe: u8[>..] = [];
         encoding::ascii85_encode(oe, "hello", ow);
         var td = encoding::text_options();

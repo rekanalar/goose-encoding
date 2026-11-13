@@ -4,16 +4,16 @@ namespace base_tests;
 import std;
 import os;
 import encoding from "..";
-import common;
+import encoding_checks;
 
 const MEGABYTE: i64 = 1000000;
 
 fn test_encode() {
     // The text that the Python library base64 wrote for the word
     // "hello".
-    common::check_b32("hello", "NBSWY3DP");
-    common::check_b32hex("hello", "D1IMOR3F");
-    common::check_hex("hello", "68656C6C6F");
+    encoding_checks::check_b32("hello", "NBSWY3DP");
+    encoding_checks::check_b32hex("hello", "D1IMOR3F");
+    encoding_checks::check_hex("hello", "68656C6C6F");
 
     // The lower case of the hex.
     var lower: u8[>..] = [];
@@ -39,27 +39,27 @@ fn test_encode() {
     assert(c.len == 0);
 
     // The tails of every length.
-    common::check_b32("A", "IE======");
-    common::check_b32("AB", "IFBA====");
-    common::check_b32("ABC", "IFBEG===");
-    common::check_b32("ABCD", "IFBEGRA=");
-    common::check_b32("ABCDE", "IFBEGRCF");
-    common::check_b32("ABCDEF", "IFBEGRCFIY======");
-    common::check_b32("ABCDEFG", "IFBEGRCFIZDQ====");
-    common::check_b32hex("A", "84======");
-    common::check_b32hex("AB", "8510====");
-    common::check_b32hex("ABC", "85146===");
-    common::check_b32hex("ABCD", "85146H0=");
-    common::check_b32hex("ABCDE", "85146H25");
-    common::check_b32hex("ABCDEF", "85146H258O======");
-    common::check_b32hex("ABCDEFG", "85146H258P3G====");
-    common::check_hex("A", "41");
-    common::check_hex("AB", "4142");
-    common::check_hex("ABC", "414243");
-    common::check_hex("ABCD", "41424344");
-    common::check_hex("ABCDE", "4142434445");
-    common::check_hex("ABCDEF", "414243444546");
-    common::check_hex("ABCDEFG", "41424344454647");
+    encoding_checks::check_b32("A", "IE======");
+    encoding_checks::check_b32("AB", "IFBA====");
+    encoding_checks::check_b32("ABC", "IFBEG===");
+    encoding_checks::check_b32("ABCD", "IFBEGRA=");
+    encoding_checks::check_b32("ABCDE", "IFBEGRCF");
+    encoding_checks::check_b32("ABCDEF", "IFBEGRCFIY======");
+    encoding_checks::check_b32("ABCDEFG", "IFBEGRCFIZDQ====");
+    encoding_checks::check_b32hex("A", "84======");
+    encoding_checks::check_b32hex("AB", "8510====");
+    encoding_checks::check_b32hex("ABC", "85146===");
+    encoding_checks::check_b32hex("ABCD", "85146H0=");
+    encoding_checks::check_b32hex("ABCDE", "85146H25");
+    encoding_checks::check_b32hex("ABCDEF", "85146H258O======");
+    encoding_checks::check_b32hex("ABCDEFG", "85146H258P3G====");
+    encoding_checks::check_hex("A", "41");
+    encoding_checks::check_hex("AB", "4142");
+    encoding_checks::check_hex("ABC", "414243");
+    encoding_checks::check_hex("ABCD", "41424344");
+    encoding_checks::check_hex("ABCDE", "4142434445");
+    encoding_checks::check_hex("ABCDEF", "414243444546");
+    encoding_checks::check_hex("ABCDEFG", "41424344454647");
 
     // The text options write no padding.
     var d: u8[>..] = [];
@@ -71,7 +71,7 @@ fn test_encode() {
 }
 
 fn test_decode() {
-    common::check_read("NBSWY3DP", "hello");
+    encoding_checks::check_read("NBSWY3DP", "hello");
 
     var a: u8[>..] = [];
     let code, pos = encoding::base32hex_decode(a, "D1IMOR3F", encoding::strict_options());
@@ -93,7 +93,7 @@ fn test_decode() {
     assert(c.len == 0);
 
     // The text with the padding reads back.
-    common::check_read("IFBEGRCFIY======", "ABCDEF");
+    encoding_checks::check_read("IFBEGRCFIY======", "ABCDEF");
     var d: u8[>..] = [];
     let code4, pos4 = encoding::base32hex_decode(d, "85146H258O======", encoding::strict_options());
     assert(code4 == encoding::ERR_OK);
@@ -216,7 +216,7 @@ fn test_faults() {
                 }
                 var text: u8[>..] = [];
                 text.resize(8 + tails, 'A');
-                text[8 + tails - 1] = common::probe_symbol(last);
+                text[8 + tails - 1] = encoding_checks::probe_symbol(last);
                 var out: u8[>..] = [];
                 let code8, pos8 = encoding::base32_decode(out, text, plain);
                 assert(code8 == want);
